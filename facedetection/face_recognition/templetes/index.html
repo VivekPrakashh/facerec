@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Face Recognition</title>
+</head>
+<body>
+  <h2>Enroll Face</h2>
+  <form id="enrollForm" enctype="multipart/form-data">
+    <input type="text" name="name" placeholder="Name" required />
+    <input type="file" name="image" required />
+    <button type="submit">Enroll</button>
+  </form>
+
+  <h2>Match Face</h2>
+  <form id="matchForm" enctype="multipart/form-data">
+    <input type="file" name="image" required />
+    <button type="submit">Match</button>
+  </form>
+
+  <div id="result"></div>
+
+  <script>
+    document.getElementById('enrollForm').onsubmit = async (e) => {
+      e.preventDefault();
+      const formData = new FormData(e.target);
+      const res = await fetch('/api/enroll/', {
+        method: 'POST',
+        body: formData
+      });
+      const data = await res.json();
+      alert(data.message || data.error);
+    };
+
+    document.getElementById('matchForm').onsubmit = async (e) => {
+      e.preventDefault();
+      const formData = new FormData(e.target);
+      const res = await fetch('/api/recognize/', {
+        method: 'POST',
+        body: formData
+      });
+      const data = await res.json();
+      document.getElementById('result').innerText =
+        `Identity: ${data.identity}\nDistance: ${data.distance.toFixed(4)}\nConfidence: ${data.detection_confidence}`;
+    };
+  </script>
+</body>
+</html>
