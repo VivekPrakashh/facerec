@@ -1,23 +1,34 @@
-# face_recognition/utils.py
-import os
-from mtcnn import MTCNN
+
+import insightface
 from sklearn.preprocessing import Normalizer
-from keras_facenet import FaceNet
+from mtcnn import MTCNN
 
-# Initialize FaceNet embedder
-print("📂 Initializing FaceNet embedder...")
-embedder = FaceNet()
-print("✅ FaceNet embedder ready.")
+print("📂 Initializing InsightFace (ArcFace + RetinaFace) via insightface-rk...")
 
-# Face detector and normalizer
+from insightface.app import FaceAnalysis
+model = FaceAnalysis(name="buffalo_l")  
+model.prepare(ctx_id=0)
+
+print("✅ insightface-rk model ready.")\
+
 detector = MTCNN()
+
 l2_normalizer = Normalizer(norm='l2')
 
+
 def get_facenet_model():
-    return embedder
+    """
+    Returns the fully prepared FaceAnalysis model (detection + embedding).
+    """
+    return model
 
 def get_face_detector():
     return detector
 
+
 def get_normalizer():
+    """
+    Returns the L2 normalizer for embedding vectors.
+    """
     return l2_normalizer
+

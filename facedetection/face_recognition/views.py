@@ -8,95 +8,100 @@ import numpy as np
 from PIL import Image
 import tempfile
 import os
+import cv2
 
 def index(request):
     return render(request, 'index.html')
 
-# Load models once
 facenet_model = get_facenet_model()
 detector = get_face_detector()
 l2_normalizer = get_normalizer()
 
-def extract_face(image_path, required_size=(160, 160)):
-    image = Image.open(image_path).convert('RGB')
-    pixels = np.asarray(image)
-    results = detector.detect_faces(pixels)
-    if not results:
-        print("❌ No face detected.")
-        return None, None
-    x1, y1, width, height = results[0]['box']
-    confidence = results[0].get('confidence', None)
-    x1, y1 = abs(x1), abs(y1)
-    x2, y2 = x1 + width, y1 + height
-    face = pixels[y1:y2, x1:x2]
-    image = Image.fromarray(face).resize(required_size)
-    face_array = np.asarray(image)
-    print("✅ Face shape:", face_array.shape)
-    return face_array, confidence
 
-def get_embedding(face_pixels):
-    face_pixels = face_pixels.astype('float32')
-    mean, std = face_pixels.mean(), face_pixels.std()
-    face_pixels = (face_pixels - mean) / std
-    samples = np.expand_dims(face_pixels, axis=0)
-    embedding = facenet_model.embeddings(samples)[0]
-    print("Embedding shape:", embedding.shape)
-    print("✅ Embedding sample:", embedding[:5])
-    return embedding
+def get_embedding(image_path):
+    """
+    Extracts a normalized face embedding using InsightFace.
+    image_path: path to image file (str).
+    """
+    image = cv2.imread(image_path)
+    if image is None:
+        raise ValueError("Could not read image file")
 
-# ENROLL FACE VIEW
+    faces = facenet_model.get(image)
+    if not faces:
+        raise ValueError("No face detected in given image")
+
+    face_obj = faces[0]
+    embedding = face_obj.embedding
+    embedding = l2_normalizer.transform([embedding])[0]
+
+    return embedding, face_obj.det_score
+
+
 class EnrollFaceView(APIView):
     def post(self, request):
-        name = request.data.get('name')
-        image_file = request.FILES.get('image')
+        name = request.data.get("name")
+        image_file = request.FILES.get("image")
 
         if not name or not image_file:
-            return Response({"error": "Name and image are required"}, status=status.HTTP_400_BAD_REQUEST)
+            return Response(
+                {"error": "Name and image are required"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
         with tempfile.NamedTemporaryFile(delete=False, suffix=".jpg") as temp_file:
             for chunk in image_file.chunks():
                 temp_file.write(chunk)
             image_path = temp_file.name
 
-        face, confidence = extract_face(image_path)
+        try:
+            embedding, confidence = get_embedding(image_path)
+        except Exception as e:
+            os.remove(image_path)
+            return Response(
+                {"error": str(e)}, status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        print(f"Enroll Face Embedding -----------------------> {embedding}")
+
         os.remove(image_path)
-
-        if face is None:
-            return Response({"error": "No face detected"}, status=status.HTTP_400_BAD_REQUEST)
-
-        embedding = get_embedding(face)
-        embedding = l2_normalizer.transform([embedding])[0].astype(np.float32)
 
         KnownFace.objects.create(
             name=name,
-            embedding=embedding.tobytes()
+            embedding=embedding.astype(np.float32).tobytes(),
         )
 
-        return Response({
-            "message": f"✅ Face enrolled for '{name}'",
-            "detection_confidence": float(confidence)
-        }, status=status.HTTP_201_CREATED)
+        return Response(
+            {
+                "message": f"✅ Face enrolled for '{name}'",
+                "detection_confidence": float(confidence),
+            },
+            status=status.HTTP_201_CREATED,
+        )
 
-# MATCH FACE VIEW
 class MatchFaceView(APIView):
     def post(self, request):
-        image_file = request.FILES.get('image')
+        image_file = request.FILES.get("image")
         if not image_file:
-            return Response({"error": "Image is required"}, status=status.HTTP_400_BAD_REQUEST)
+            return Response(
+                {"error": "Image is required"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
         with tempfile.NamedTemporaryFile(delete=False, suffix=".jpg") as temp_file:
             for chunk in image_file.chunks():
                 temp_file.write(chunk)
             image_path = temp_file.name
 
-        face, confidence = extract_face(image_path)
+        try:
+            embedding, confidence = get_embedding(image_path)
+        except Exception as e:
+            os.remove(image_path)
+            return Response(
+                {"error": str(e)}, status=status.HTTP_400_BAD_REQUEST
+            )
+        print(f"Match Face Embedding -----------------------> {embedding}")
         os.remove(image_path)
-
-        if face is None:
-            return Response({"error": "No face detected"}, status=status.HTTP_400_BAD_REQUEST)
-
-        embedding = get_embedding(face)
-        embedding = l2_normalizer.transform([embedding])[0].astype(np.float32)
 
         print("🔍 Uploaded embedding sample:", embedding[:5])
 
@@ -115,8 +120,10 @@ class MatchFaceView(APIView):
         if min_dist > 0.8:
             identity = "unknown"
 
-        return Response({
-            "identity": identity,
-            "distance": float(min_dist),
-            "detection_confidence": float(confidence)
-        })
+        return Response(
+            {
+                "identity": identity,
+                "distance": float(min_dist),
+                "detection_confidence": float(confidence),
+            }
+        )
