@@ -78,6 +78,8 @@ class EnrollFaceView(APIView):
             },
             status=status.HTTP_201_CREATED,
         )
+    
+    # For Matching Face with Database Images
 
 class MatchFaceView(APIView):
     def post(self, request):
@@ -94,36 +96,35 @@ class MatchFaceView(APIView):
             image_path = temp_file.name
 
         try:
-            embedding, confidence = get_embedding(image_path)
+            embedding, detection_confidence = get_embedding(image_path)
         except Exception as e:
             os.remove(image_path)
-            return Response(
-                {"error": str(e)}, status=status.HTTP_400_BAD_REQUEST
-            )
-        print(f"Match Face Embedding -----------------------> {embedding}")
-        os.remove(image_path)
+            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
-        print("🔍 Uploaded embedding sample:", embedding[:5])
+        os.remove(image_path)
 
         min_dist = float("inf")
         identity = "unknown"
 
         for known in KnownFace.objects.all():
             db_emb = np.frombuffer(known.embedding, dtype=np.float32)
-            print(f"🔍 Comparing with {known.name}, DB embedding sample:", db_emb[:5])
             dist = np.linalg.norm(embedding - db_emb)
-            print(f"Distance to {known.name}: {dist}")
             if dist < min_dist:
                 min_dist = dist
                 identity = known.name
 
-        if min_dist > 0.8:
-            identity = "unknown"
+        threshold = 0.8
+        if min_dist > threshold:
+            return Response({"identity": "unknown"}, status=status.HTTP_200_OK)
+        
+        detection_confidence = 1 - (min_dist / threshold)
 
         return Response(
             {
                 "identity": identity,
                 "distance": float(min_dist),
-                "detection_confidence": float(confidence),
-            }
+                "detection_confidence": float(detection_confidence),
+            },
+            status=status.HTTP_200_OK,
         )
+

@@ -39,8 +39,13 @@
         body: formData
       });
       const data = await res.json();
-      document.getElementById('result').innerText =
-        `Identity: ${data.identity}\nDistance: ${data.distance.toFixed(4)}\nConfidence: ${data.detection_confidence}`;
+     if (data.identity === "unknown") {
+  document.getElementById('result').innerText = `Identity: ${data.identity}`;
+} else {
+  document.getElementById('result').innerText =
+    `Identity: ${data.identity}\nDistance: ${data.distance.toFixed(4)}\nConfidence: ${data.detection_confidence}`;
+}
+
     };
   </script>
 </body>
